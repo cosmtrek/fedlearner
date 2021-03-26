@@ -16,8 +16,8 @@
 from config import Config
 from fedlearner_webconsole.app import create_app
 from fedlearner_webconsole.db import db
-from fedlearner_webconsole.auth.models import User
 from fedlearner_webconsole.initial_db import initial_db
+from fedlearner_webconsole.db_model import *
 
 
 class CliConfig(Config):

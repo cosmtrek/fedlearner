@@ -13,9 +13,9 @@
 # limitations under the License.
 
 # coding: utf-8
-from fedlearner_webconsole.initial_db import initial_db
 import json
 import logging
+import os
 import unittest
 import secrets
 from http import HTTPStatus
@@ -25,12 +25,19 @@ from flask import Flask
 from flask_testing import TestCase
 from fedlearner_webconsole.app import create_app
 from fedlearner_webconsole.db import db
-from fedlearner_webconsole.auth.models import Role, User, State
+from fedlearner_webconsole.initial_db import initial_db
+from fedlearner_webconsole.db_model import *
 
 
 class BaseTestCase(TestCase):
     class Config(object):
-        SQLALCHEMY_DATABASE_URI = 'sqlite://'
+        db_path = '/tmp/fedlearner_test.db'
+        # keep clean env
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+        SQLALCHEMY_DATABASE_URI = f'sqlite:///{db_path}?check_same_thread=False'
         SQLALCHEMY_TRACK_MODIFICATIONS = False
         JWT_SECRET_KEY = secrets.token_urlsafe(64)
         PROPAGATE_EXCEPTIONS = True
@@ -63,13 +70,12 @@ class BaseTestCase(TestCase):
         self.signin_helper(username='admin', password='admin')
 
     def signin_helper(self, username='ada', password='ada'):
-        resp = self.client.post(
-            '/api/v2/auth/signin',
-            data=json.dumps({
-                'username': username,
-                'password': password
-            }),
-            content_type='application/json')
+        resp = self.client.post('/api/v2/auth/signin',
+                                data=json.dumps({
+                                    'username': username,
+                                    'password': password
+                                }),
+                                content_type='application/json')
         resp_data = self.get_response_data(resp)
         self.assertEqual(resp.status_code, HTTPStatus.OK)
         self.assertTrue('access_token' in resp_data)
@@ -87,33 +93,28 @@ class BaseTestCase(TestCase):
         return headers
 
     def get_helper(self, url, use_auth=True):
-        return self.client.get(
-            url, headers=self._get_headers(use_auth))
+        return self.client.get(url, headers=self._get_headers(use_auth))
 
     def post_helper(self, url, data, use_auth=True):
-        return self.client.post(
-            url,
-            data=json.dumps(data),
-            content_type='application/json',
-            headers=self._get_headers(use_auth))
+        return self.client.post(url,
+                                data=json.dumps(data),
+                                content_type='application/json',
+                                headers=self._get_headers(use_auth))
 
     def put_helper(self, url, data, use_auth=True):
-        return self.client.put(
-            url,
-            data=json.dumps(data),
-            content_type='application/json',
-            headers=self._get_headers(use_auth))
+        return self.client.put(url,
+                               data=json.dumps(data),
+                               content_type='application/json',
+                               headers=self._get_headers(use_auth))
 
     def patch_helper(self, url, data, use_auth=True):
-        return self.client.patch(
-            url,
-            data=json.dumps(data),
-            content_type='application/json',
-            headers=self._get_headers(use_auth))
+        return self.client.patch(url,
+                                 data=json.dumps(data),
+                                 content_type='application/json',
+                                 headers=self._get_headers(use_auth))
 
     def delete_helper(self, url, use_auth=True):
-        return self.client.delete(url,
-                                  headers=self._get_headers(use_auth))
+        return self.client.delete(url, headers=self._get_headers(use_auth))
 
     def setup_project(self, role, peer_port):
         if role == 'leader':
@@ -123,26 +124,21 @@ class BaseTestCase(TestCase):
 
         name = 'test-project'
         config = {
-            'participants': [
-                {
-                    'name': f'party_{peer_role}',
-                    'url': f'127.0.0.1:{peer_port}',
-                    'domain_name': f'fl-{peer_role}.com'
-                }
-            ],
-            'variables': [
-                {
-                    'name': 'EGRESS_URL',
-                    'value': f'127.0.0.1:{peer_port}'
-                }
-            ]
+            'participants': [{
+                'name': f'party_{peer_role}',
+                'url': f'127.0.0.1:{peer_port}',
+                'domain_name': f'fl-{peer_role}.com'
+            }],
+            'variables': [{
+                'name': 'EGRESS_URL',
+                'value': f'127.0.0.1:{peer_port}'
+            }]
         }
-        create_response = self.post_helper(
-            '/api/v2/projects',
-            data={
-                'name': name,
-                'config': config,
-            })
+        create_response = self.post_helper('/api/v2/projects',
+                                           data={
+                                               'name': name,
+                                               'config': config,
+                                           })
         self.assertEqual(create_response.status_code, HTTPStatus.OK)
         return json.loads(create_response.data).get('data')
 
@@ -166,26 +162,40 @@ class TestAppProcess(mp.get_context('spawn').Process):
             self._test_class.Config = self._app_config
         test = self._test_class(self._method)
         old_tearDown = test.tearDown
+
         def new_tearDown(*args, **kwargs):
             self._queue.get()
             old_tearDown(*args, **kwargs)
+
         test.tearDown = new_tearDown
         suite = unittest.TestSuite([test])
         res = suite.run(unittest.TestResult())
         if res.errors:
             for method, err in res.errors:
-                print('======================================================================')
+                print(
+                    '======================================================================'
+                )
                 print('ERROR:', method)
-                print('----------------------------------------------------------------------')
+                print(
+                    '----------------------------------------------------------------------'
+                )
                 print(err)
-                print('----------------------------------------------------------------------')
+                print(
+                    '----------------------------------------------------------------------'
+                )
         if res.failures:
             for method, fail in res.failures:
-                print('======================================================================')
+                print(
+                    '======================================================================'
+                )
                 print('FAIL:', method)
-                print('----------------------------------------------------------------------')
+                print(
+                    '----------------------------------------------------------------------'
+                )
                 print(fail)
-                print('----------------------------------------------------------------------')
+                print(
+                    '----------------------------------------------------------------------'
+                )
         assert res.wasSuccessful()
 
     def join(self):
